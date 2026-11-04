@@ -21,18 +21,6 @@ drives through a daemon of its own. A web page turns the same assistant into a p
 > This repository is Palo's showcase: documentation and media only. The source code lives in a
 > private repository; everything described here is running every day.
 
-## Contents
-
-- [What it does](#what-it-does)
-- [One assistant, three brains](#one-assistant-three-brains)
-- [Two computers, one memory](#two-computers-one-memory)
-- [Talking to it](#talking-to-it)
-- [The monitor](#the-monitor)
-- [Working on its own](#working-on-its-own)
-- [Constraints it was built under](#constraints-it-was-built-under)
-- [By the numbers](#by-the-numbers)
-- [Documentation](#documentation)
-
 ## What it does
 
 - **Software projects, from the phone.** "The search tests in Latent are failing, take a look"
