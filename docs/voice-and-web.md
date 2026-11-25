@@ -5,7 +5,30 @@
 A voice note on Telegram is transcribed on the PC with faster-whisper. If the answer can be spoken
 (no code, links or long lists), it comes back as a voice note in a neural Spanish voice; otherwise
 it comes back in writing. A long project report arrives in writing, followed by a short voice note
-in which the local model sums it up.
+in which the local model sums it up. The voice is a neural Spanish voice from Edge, with a local
+model as a fallback. A local voice-cloning studio was tried on the shared 8 GB GPU in November, and
+it was dropped because it either did not fit next to Whisper or took seconds per sentence.
+
+## Writing on Telegram
+
+- **Bursts become one message.** Text waits 2.5 seconds after the last message, at most 10 seconds
+  from the first, and the burst gets a single answer, so the owner can write one idea per message.
+- **The answer is visible while it is written,** as a live draft, and then sent as a normal message,
+  so the phone's notification shows the answer itself.
+- **Long work does not hold the chat.** A general turn that takes more than 30 seconds moves to the
+  background with one line, and the conversation goes on.
+
+## "Hey Palo"
+
+A wake word on both computers, in `palo-ear`, a small Python program that stays open all the time.
+It only gates the microphone by level and sends what sounds like speech to the PC. There a small
+speech recogniser listens for "Hey Palo", and Whisper takes over whatever that misses: with the
+laptop's real microphone the small recogniser missed every call, and Whisper caught almost all of
+them in half a second each. What follows the wake word goes into the same conversation as everywhere
+else, and anything that needs approval is asked for in writing, never approved by voice. On the Mac it has a face: a Swift menu-bar app that launches the ear, restarts it
+if it falls over, and shows a bubble under the menu bar with what was said and what Palo answers,
+without taking focus or clicks. Listening can be switched off, or limited to when the laptop is
+charging.
 
 ## The call
 
@@ -65,6 +88,37 @@ turn-taking and barge-in that a local pipeline on a shared consumer GPU cannot r
 
 Without an OpenAI key nothing changes: the page offers the free call only.
 
+## The iPhone app
+
+<p align="center">
+  <img src="../media/iphone-tabs.png" alt="The iPhone app's four tabs: today, panel, talk and monitor" width="720">
+</p>
+
+A SwiftUI app for the owner only, outside the App Store, and the main way into Palo from the phone.
+It has four tabs under a floating bar:
+
+- **Today**, native: Claude's quota for the five-hour window and the week, and the work running and
+  queued.
+- **Panel** and **Talk**: the same web pages a computer opens, inside the app, with a device session
+  of their own paired once from the web.
+- **Monitor**, native and designed for a phone: CPU, GPU, VRAM and RAM as rings, live.
+
+<p align="center">
+  <img src="../media/iphone-widgets.png" alt="Home screen, the ask box, widgets, the lock screen and the Live Activity in the Dynamic Island" width="720">
+</p>
+
+Next to the tabs are quota widgets and the Claude task in progress as a **Live Activity**, on the lock
+screen and in the Dynamic Island. Palo starts it remotely when a task begins, so the app does not
+need to be open. It updates it with what Claude is really doing, taken from the description Claude
+writes for each command ("Fixing the step sync (2/5)"), closes it with a one-line result and removes
+it 30 seconds later. Palo sends those pushes itself, with a minimal APNs client over HTTP/2 and a
+provider token signed with the owner's key.
+
+iOS Shortcuts reach the same API with a token that is valid only for Shortcuts: the Action button
+asks Palo by voice, the share sheet sends a link, PDF or photo, and arriving home delivers what was
+left for then. The app follows the visual language of the owner's portfolio: near-black ground,
+one pistachio signal colour, hairlines instead of cards, Geist with Instrument Serif italics.
+
 ## The project panel
 
 <p align="center">
@@ -89,29 +143,52 @@ Without an OpenAI key nothing changes: the page offers the free call only.
 - **Safe rendering.** No HTML is ever built from data: everything from Palo, and from Claude, enters
   the page as text, under a strict Content Security Policy.
 
+## Inside Telegram
+
+The panel, the monitor, the measurements and the approvals also open as a Telegram Mini App, without
+leaving the chat and without a key. The page reads Telegram's launch data and Palo checks its
+HMAC signature in constant time, that it is less than an hour old, and that the user is on the
+allowlist. No Telegram script is loaded. An approval can be seen whole there: a mail draft
+editable before it is sent, or Claude's full diff, coloured, before it is pushed.
+
 ## The monitor
 
 ![The monitor](../media/monitor.png)
 
-A page of the same web, opened as an app window on the Windows desktop with its own shortcut, and
-also usable from the phone.
+A page of the same web, opened as an app window on the PC's desktop, and also usable from the phone.
 
-- **Windows is measured by one long-lived PowerShell** that writes a JSON line every two seconds,
-  using WMI classes that do not change with the system language.
-- **WSL is read from `/proc`** without launching anything. A process with no known name counts for
-  its ancestor, so the test run of a task is CPU spent by Claude.
+- **The machine is read from `/proc` and `nvidia-smi`,** without a helper process: CPU per thread,
+  available RAM, the processes that spend the most, and every process with its video memory. A
+  process with no known name counts for its ancestor, so the test run of a task is CPU spent by
+  Claude.
 - **A model working is inferred.** Ollama only gives it away by moving a model's expiry time, so a
   model is shown as active for a few seconds after that.
-- **Memory is drawn by owner**, not by address, since Windows does not publish that map; what
-  cannot be attributed is shown as "Windows and games".
 - **It measures nothing unless someone is looking.** Sampling starts with the first window and stops
   with the last; a minimised window closes its stream. Claude's quota is refreshed only while a
   window is open, at most every 30 minutes, with the smallest query that makes the CLI report it.
 
+## The desk screen
+
+An old Android phone in kiosk mode sits on the desk showing `/dock`, a page built to be read at a
+glance, upright or sideways, without scrolling. It shows the time, what Palo is doing, what the PC is
+spending, the quota and the last lines of the console. It receives the monitor's samples but
+never asks for Claude's quota, so being on all night does not open quota windows at night.
+
+## Measurements
+
+`/metrics` shows, for any number of days, p50 and p95 per stage and engine, success per tool,
+engine fallbacks, and uptime with every crash and its cause. The same figures go into a weekly
+summary in the daily note and can be exported as CSV. With an endpoint set, every turn is also
+exported as an OpenTelemetry trace with the GenAI semantic conventions.
+
 ## Signing in
 
-The web is reached through a tunnel with its own access layer, and the pages ask for an access key
-once. After that first sign-in they offer a passkey: Face ID on the phone or Touch ID on the laptop,
-and since the passkey lives in the iCloud Keychain, registering it on one device is enough for both.
-Only the public key is stored, ten wrong attempts in ten minutes lock the login, and changing the
-access key deletes every passkey, which is how a lost device loses its way in.
+The web is reached through a tunnel with its own access layer. Every device that signs in gets a
+session of its own: a random token in the cookie, stored by Palo only as a hash, with a name, how it
+signed in, when it was last used and from where. The first sign-in uses the access key; after that
+the pages offer a passkey, Face ID on the phone or Touch ID on the laptop, and since the passkey lives
+in the iCloud Keychain, registering it on one device is enough for both.
+
+The access key only opens the door to new devices: changing it signs nobody out and deletes no
+passkey. A lost device loses its access alone, from the panel's device list or by asking Palo. Only
+public keys are stored, and ten wrong attempts in ten minutes lock the login.
