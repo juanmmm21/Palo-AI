@@ -28,18 +28,26 @@ sequenceDiagram
 1. **It arrives.** Telegram is read by long polling, so nothing listens on the internet. Anyone
    outside an allowlist of user ids is ignored without a reply. Voice notes are transcribed on the
    GPU first; a photo is saved and its path travels with the request, because the CLIs do not take
-   images inside a text task. An album arrives as one message.
-2. **It is routed.** A 4B model in Ollama classifies the message as `project`, `general` or
+   images inside a text task. An album arrives as one message, and so do several texts sent in a
+   row: Palo waits until the owner stops typing (2.5 seconds, 10 at most) and answers once.
+2. **It is routed.** Two kinds of message are recognised by code first and never leave the general
+   assistant: those that call Palo by name, and orders to push, deploy or restart, which a Claude
+   session locked in a worktree could not carry out. A message that reports a failure ("it still
+   doesn't work") carries a note asking the general assistant to hand project bugs to Claude
+   instead of debugging them itself. Everything else goes to a 4B model in Ollama classifies the message as `project`, `general` or
    `trivial`, taking into account the active project, the names of every repository and the
    previous exchange. Project work that names another repository switches to it first, cloning it
    if needed. Only what the owner wrote is interpreted: a caption, never a file path that happens to
    contain a project's name.
 3. **The prompt is assembled** from the shared instructions in the vault, a local summary of older
-   turns (they are summarised, never dropped), the recent history and the memories that relate to
-   the message.
+   turns (they are summarised, never dropped), the recent history, the memories that relate to
+   the message and up to three past exchanges of the conversation that do. The memory search
+   starts while the router is still deciding.
 4. **The engine runs as a subprocess.** Each CLI's `stream-json` output becomes one common stream
-   of events (text, tool calls, results, permission requests, quota errors). Those events update a
-   single message in Telegram while the work happens.
+   of events (text, tool calls, results, permission requests, quota errors). A general answer is
+   shown as a live draft while it is written; project work updates a single message in Telegram,
+   and the Live Activity on the iPhone, while it happens. A general turn that has not answered
+   after 30 seconds moves to the background, so the chat is free again.
 5. **Permissions become buttons.** When a model hits something outside its allowlist (a force push,
    deleting files outside the repository), the request comes back as *Allow / No*. On approval Palo
    either resumes the session with that permission or runs the approved call itself.
@@ -56,9 +64,9 @@ Every model is reached through its official CLI with a personal subscription, or
   per project with `--resume`, so "and now the tests" continues the same conversation. Project
   sessions keep standard input open, so a message sent while Claude is working ("tell Claude to
   skip the docs") is written straight into the live session.
-- **Gemini through Antigravity** (`agy`) for everything else. During a call one `agy` process is
-  kept warm for the whole conversation, because starting the CLI for every sentence takes several
-  seconds.
+- **Gemini through Antigravity** (`agy`) for everything else. One `agy` process is kept warm for
+  general questions, and another for the whole length of a call, because starting the CLI takes
+  three to five seconds.
 - **Ollama** for routing, summaries, page watching, the memory keeper's fallback, image checks and
   the last-resort answer.
 
@@ -87,39 +95,62 @@ reset. When the window renews with work waiting, it says so.
   another one, it is passed to that project instead of being refused.
 - **Isolated when needed.** If the owner's checkout has uncommitted or unpushed work, the task runs
   in a throwaway `git worktree` cut from a fresh `origin`. Claude commits there without pushing;
-  Palo runs the repository's own checks, rebases green work onto `origin`, checks again and pushes
-  without force. Red work, conflicts or a commit with a foreign author never reach `main`.
+  the repository's own checks run, green work is rebased onto `origin`, checked again and pushed
+  without force. Red work, conflicts or a commit with a foreign author never reach `main`. That
+  lifecycle is now delegated to [fleet](https://github.com/juanmmm21/fleet), a separate
+  orchestrator for coding agents that also warns when two live tasks touch the same files; Palo
+  keeps the agent, the quota and the questions, and does it all itself if fleet does not answer.
 - **A live window on the PC.** A terminal opens with the session as it happens: Claude's text,
   every tool call and the output of each command.
 
 ## In the background
 
-`palo run` is one process with several loops besides the chat:
+`palo run` is one process with several loops besides the chat, each under its own supervisor:
 
 - **Scheduler.** One-off, daily, weekday and weekly tasks that survive restarts: reminders, timed
   requests, promises Palo made, a nightly project summary written into the day's note.
 - **Morning briefing.** Spoken, with the day's calendar, important unread mail, red CI and a joke.
-- **CI watch.** The last run of every repository; red is told once, and so is green again.
+- **CI watch.** The last run of every repository every ten minutes; red is told once, and a project
+  under watch gets one fix attempt from Claude right away.
+- **Production watch.** Deployed services checked from outside, confirmed before alerting.
+- **Mail triage** (opt-in). Unread mail sorted, with drafts, unsubscribe offers and expenses.
 - **Grades and practices.** New or changed grades on the university's Moodle, told once; lab
-  practices copied into the vault with their files and a requirements checklist cited from the
-  statement.
+  practices copied into the vault with their files, a requirements checklist cited from the
+  statement and their deadlines on the calendar.
 - **Watched pages.** The local model extracts the price or date that matters and Palo speaks only
   when it changes.
 - **Looking ahead.** Calendar, pending coursework and red CI crossed every 30 minutes.
 - **Ideas against code.** Open ideas and notes lined up against what has already been built, at
   most one suggestion a day.
-- **Night watch.** The nightly round over every repository, with a morning report only when there
-  is something to tell.
+- **Night watch and night research.** Every repository checked between 02:00 and 06:00, and up to
+  two tagged ideas researched into dossiers, with the project's own decisions and module tree in the
+  brief so the research does not propose what already exists.
+- **Copilot.** Repeated failures on either computer diagnosed ahead of time, and a summary of what
+  was left open when the owner switches computers.
+- **Frictions.** Corrections, repetitions and misrouted messages noted by rules, reviewed weekly.
+- **New code.** Every two minutes `main` is fetched; once nothing is running and the owner has been
+  quiet for five minutes, Palo checks that the new code imports and restarts itself, then says on
+  Telegram when it is back.
 - **Security.** Alerts for unexpected access and a weekly review.
 - **Vault sync.** Every 15 minutes with the other machine.
 - **Heartbeat and backup.** A beat to an external watchdog every five minutes and an encrypted
   backup once a day.
 
-Each loop can be turned off on its own, and a source that fails only leaves its own facts out.
+Each loop can be turned off on its own, a source that fails only leaves its own facts out, and a
+loop that keeps crashing is restarted with backoff and finally switched off with a notice.
+
+## Measured
+
+Every turn leaves a trace without its text: where it came in, what it was, who answered, the time
+of each stage and of the first chunk, the engines that failed first and the quota it spent. Tool
+calls are measured in the MCP server. Reference conversations, with no personal data, check intent,
+first tool and what an answer must and must not say, and a case counts as worse only when it fails
+twice in a row.
 
 ## Testing
 
 The test suite never touches the network or a real CLI. Fake `claude` and `agy` executables replay
 `stream-json` recorded from the real tools on the PC; IMAP, SMTP, CalDAV, PowerShell, the Mac
-daemon and Moodle have in-process fakes, and a test fails if anything opens a socket. Type checking
-runs with mypy `--strict` on both macOS and Linux targets, and CI runs everything on every push.
+daemon, the GNOME portals, fleet and Moodle have in-process fakes, and a test fails if anything
+opens a socket. Type checking runs with mypy `--strict` on both macOS and Linux targets, and CI
+runs everything on every push.
