@@ -56,6 +56,31 @@ The conversation belongs to Palo, not to an engine. One SQLite history is shared
 models and by the calls: a sentence spoken on the call is in the thread when the next Telegram
 message arrives. Older turns are summarised locally instead of being dropped.
 
+## The whole conversation
+
+A rolling summary has a size limit, so what was said a week ago used to fall out of it. Now every
+exchange (a message from the owner and the answers that follow it) is indexed with its date in the
+same database as the vault, but in tables of its own, with the same embeddings and the same hybrid
+search, right after each answer and without making anyone wait.
+
+- **Every message** gets up to three relevant past exchanges, each with its date, found with the
+  same query vector as the vault memories, so the embedding model does no extra work.
+- **"What did I tell you about the logo last week?"** goes to `recall_conversation`, which returns
+  the exchanges word for word with their dates, by topic or by days.
+- **Each day** is summarised locally when it ends, and the summary is indexed as one more exchange.
+- **Redactions follow:** text hidden from the history (an access key, say) is hidden in the index
+  too, and its vector is rebuilt.
+
+The budget was set before writing any code: the memory stage measured 3 ms median and 91 ms at
+p95 over real turns, and the new search could add at most 50 ms to that.
+
+## A second memory, in shadow
+
+The owner's own AI infrastructure has a long-term memory layer that scores similarity × importance ×
+decay. It runs in shadow over the same chunks and embeddings, answering next to the hybrid index so
+the two can be compared on real messages. The measurements so far removed importance by note type
+and forgetting from its defaults, and the hybrid index still decides.
+
 ## Ideas against what has been built
 
 With dozens of repositories, nothing tells the owner that an open idea already has code behind it.
